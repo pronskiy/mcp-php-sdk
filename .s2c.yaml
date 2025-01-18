@@ -1,0 +1,267 @@
+
+targetPHPVersion: "8.4"
+files:
+  - input: schema/generated/Annotated.json
+    className: Annotated
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/BlobResourceContents.json
+    className: BlobResourceContents
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/CallToolRequest.json
+    className: CallToolRequest
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/CallToolResult.json
+    className: CallToolResult
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/CancelledNotification.json
+    className: CancelledNotification
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ClientCapabilities.json
+    className: ClientCapabilities
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/CompleteRequest.json
+    className: CompleteRequest
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/CompleteResult.json
+    className: CompleteResult
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/CreateMessageRequest.json
+    className: CreateMessageRequest
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/CreateMessageResult.json
+    className: CreateMessageResult
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/EmbeddedResource.json
+    className: EmbeddedResource
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/GetPromptRequest.json
+    className: GetPromptRequest
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/GetPromptResult.json
+    className: GetPromptResult
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ImageContent.json
+    className: ImageContent
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/Implementation.json
+    className: Implementation
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/InitializeRequest.json
+    className: InitializeRequest
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/InitializeResult.json
+    className: InitializeResult
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/InitializedNotification.json
+    className: InitializedNotification
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/JSONRPCError.json
+    className: JSONRPCError
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/JSONRPCNotification.json
+    className: JSONRPCNotification
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/JSONRPCRequest.json
+    className: JSONRPCRequest
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/JSONRPCResponse.json
+    className: JSONRPCResponse
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ListPromptsRequest.json
+    className: ListPromptsRequest
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ListPromptsResult.json
+    className: ListPromptsResult
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ListResourceTemplatesRequest.json
+    className: ListResourceTemplatesRequest
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ListResourceTemplatesResult.json
+    className: ListResourceTemplatesResult
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ListResourcesRequest.json
+    className: ListResourcesRequest
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ListResourcesResult.json
+    className: ListResourcesResult
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ListRootsRequest.json
+    className: ListRootsRequest
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ListRootsResult.json
+    className: ListRootsResult
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ListToolsRequest.json
+    className: ListToolsRequest
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ListToolsResult.json
+    className: ListToolsResult
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/LoggingMessageNotification.json
+    className: LoggingMessageNotification
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ModelHint.json
+    className: ModelHint
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ModelPreferences.json
+    className: ModelPreferences
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/Notification.json
+    className: Notification
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/PaginatedRequest.json
+    className: PaginatedRequest
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/PaginatedResult.json
+    className: PaginatedResult
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/PingRequest.json
+    className: PingRequest
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ProgressNotification.json
+    className: ProgressNotification
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/Prompt.json
+    className: Prompt
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/PromptArgument.json
+    className: PromptArgument
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/PromptListChangedNotification.json
+    className: PromptListChangedNotification
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/PromptMessage.json
+    className: PromptMessage
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/PromptReference.json
+    className: PromptReference
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ReadResourceRequest.json
+    className: ReadResourceRequest
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ReadResourceResult.json
+    className: ReadResourceResult
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/Request.json
+    className: Request
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/Resource.json
+    className: Resource
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ResourceContents.json
+    className: ResourceContents
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ResourceListChangedNotification.json
+    className: ResourceListChangedNotification
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ResourceReference.json
+    className: ResourceReference
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ResourceTemplate.json
+    className: ResourceTemplate
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ResourceUpdatedNotification.json
+    className: ResourceUpdatedNotification
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/Result.json
+    className: Result
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/Root.json
+    className: Root
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/RootsListChangedNotification.json
+    className: RootsListChangedNotification
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/SamplingMessage.json
+    className: SamplingMessage
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ServerCapabilities.json
+    className: ServerCapabilities
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/SetLevelRequest.json
+    className: SetLevelRequest
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/SubscribeRequest.json
+    className: SubscribeRequest
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/TextContent.json
+    className: TextContent
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/TextResourceContents.json
+    className: TextResourceContents
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/Tool.json
+    className: Tool
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/ToolListChangedNotification.json
+    className: ToolListChangedNotification
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"
+  - input: schema/generated/UnsubscribeRequest.json
+    className: UnsubscribeRequest
+    targetDirectory: src/Types
+    targetNamespace: "ModelContextProtocol\\Types"

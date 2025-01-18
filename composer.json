@@ -1,0 +1,5 @@
+{
+  "require": {
+    "helmich/schema2class": "v3.3.7"
+  }
+}
