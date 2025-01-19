@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 namespace ModelContextProtocol\Types;
 
+use Square\Pjson\Json;
+use Square\Pjson\JsonSerialize;
+
 class Result
 {
+    use JsonSerialize;
+    
     /**
      * Schema used to validate input for creating instances of this class
      *
@@ -29,6 +34,7 @@ class Result
      *
      * @var mixed[]|null
      */
+    #[Json]
     private ?array $Meta = null;
 
     /**

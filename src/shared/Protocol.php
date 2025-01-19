@@ -2,331 +2,383 @@
 
 namespace ModelContextProtocol\Shared;
 
-use Exception;
-use RuntimeException;
-use JsonSerializable;
-use Psr\Log\LoggerInterface;
-use Psr\Log\LoggerAwareTrait;
+use ModelContextProtocol\Types\JSONRPCMessage;
+use ModelContextProtocol\Types\JSONRPCRequest;
+use ModelContextProtocol\Types\JSONRPCResponse;
+use ModelContextProtocol\Types\JSONRPCNotification;
+use ModelContextProtocol\Types\JSONRPCError;
+use ModelContextProtocol\Types\Request;
+use ModelContextProtocol\Types\Result;
+use ModelContextProtocol\Types\Notification;
+use React\Promise\PromiseInterface;
 
 /**
- * Extra data for request handlers
+ * Implements MCP protocol framing on top of a pluggable transport, including
+ * features like request/response linking, notifications, and progress.
  */
-class RequestHandlerExtra {}
-
-/**
- * Base Protocol class implementing MCP protocol framing
- */
-abstract class Protocol 
+abstract class Protocol
 {
-    protected const IMPLEMENTATION_NAME = 'mcp-php';
+    /**
+     * Invalid JSON was received by the server.
+     * An error occurred on the server while parsing the JSON text.
+     */
+    private const ERROR_PARSE = -32700;
 
-    protected ?Transport $transport = null;
-    protected array $requestHandlers = [];
-    protected array $notificationHandlers = [];
-    protected array $responseHandlers = [];
-    protected array $progressHandlers = [];
-    protected ?callable $fallbackRequestHandler = null;
-    protected ?callable $fallbackNotificationHandler = null;
+    /**
+     * The JSON sent is not a valid Request object.
+     */
+    private const ERROR_INVALID_REQUEST = -32600;
+
+    /**
+     * The method does not exist / is not available.
+     */
+    private const ERROR_METHOD_NOT_FOUND = -32601;
+
+    /**
+     * Invalid method parameter(s).
+     */
+    private const ERROR_INVALID_PARAMS = -32602;
+
+    /**
+     * Internal JSON-RPC error.
+     */
+    private const ERROR_INTERNAL = -32603;
+
+    /**
+     * Request timeout error.
+     */
+    private const ERROR_REQUEST_TIMEOUT = -32000;
+
+    /**
+     * Request was cancelled.
+     */
+    private const ERROR_REQUEST_CANCELLED = -32001;
+    private ?Transport $transport = null;
+    private int $requestMessageId = 0;
+    /** @var array<string, callable(JSONRPCRequest): mixed> */
+    private array $requestHandlers = [];
+    /** @var array<int, array{timer: int, controller: mixed}> */
+    private array $requestHandlerAbortControllers = [];
+    /** @var array<string, callable(JSONRPCNotification): void> */
+    private array $notificationHandlers = [];
+    /** @var array<int, callable(JSONRPCResponse|\Throwable): void> */
+    private array $responseHandlers = [];
+    /** @var array<int, callable(mixed): void> */
+    private array $progressHandlers = [];
 
     public function __construct(
-        protected ?ProtocolOptions $options = null
+        private ?ProtocolOptions $options = null
     ) {
-        // Set default notification handlers
-        $this->setNotificationHandler(
-            Method::NOTIFICATIONS_PROGRESS,
-            function($notification) {
-                return $this->onProgress($notification);
-            }
-        );
-
-        // Set default request handlers
-        $this->setRequestHandler(
-            Method::PING,
-            function($request, $extra) {
-                return new EmptyRequestResult();
-            }
-        );
+        $this->options = $options ?? new ProtocolOptions();
     }
 
     /**
-     * Connects to the given transport and starts listening for messages
+     * Sets the transport to use for this protocol instance.
      */
-    public function connect(Transport $transport): void {
+    public function setTransport(Transport $transport): void
+    {
         $this->transport = $transport;
-
-        $transport->onClose = function() {
-            $this->doClose();
-        };
-
-        $transport->onError = function($error) {
-            $this->onError($error);
-        };
-
-        $transport->onMessage = function($message) {
-            if ($message instanceof JSONRPCResponse) {
-                $this->onResponse($message, null);
-            } elseif ($message instanceof JSONRPCRequest) {
-                $this->onRequest($message);
-            } elseif ($message instanceof JSONRPCNotification) {
-                $this->onNotification($message);
-            } elseif ($message instanceof JSONRPCError) {
-                $this->onResponse(null, $message);
-            }
-        };
-
-        $transport->start();
+        $transport->setOnMessage(\Closure::fromCallable([$this, 'handleMessage']));
+        $transport->setOnError(\Closure::fromCallable([$this, 'handleError']));
+        $transport->setOnClose(\Closure::fromCallable([$this, 'handleClose']));
     }
 
     /**
-     * Handles connection close
+     * Starts the protocol.
      */
-    protected function doClose(): void {
-        $this->responseHandlers = [];
-        $this->progressHandlers = [];
-        $this->transport = null;
-        $this->onClose();
+    public function start(): void
+    {
+        if (!$this->transport) {
+            throw new \RuntimeException('No transport set');
+        }
+        $this->transport->start();
+    }
 
-        $error = new McpError(ErrorCode::CONNECTION_CLOSED, "Connection closed");
-        foreach ($this->responseHandlers as $handler) {
-            $handler(null, $error);
+    /**
+     * Closes the protocol.
+     */
+    public function close(): void
+    {
+        if ($this->transport) {
+            $this->transport->close();
         }
     }
 
     /**
-     * Handles incoming notifications
+     * Cleans up request handlers and timers for a given message ID
      */
-    protected function onNotification(JSONRPCNotification $notification): void {
-        $handler = $this->notificationHandlers[$notification->method]
-            ?? $this->fallbackNotificationHandler;
+    private function cleanupRequest(int $messageId): void
+    {
+        unset($this->responseHandlers[$messageId]);
+        unset($this->progressHandlers[$messageId]);
+        unset($this->requestHandlerAbortControllers[$messageId]);
+    }
+
+    protected function handleMessage(JSONRPCMessage $message): void
+    {
+        // Check for timeouts
+        $currentTime = time();
+        foreach ($this->requestHandlerAbortControllers as $messageId => $data) {
+            if ($currentTime >= $data['timer']) {
+                $error = new JSONRPCError(
+                    self::ERROR_REQUEST_TIMEOUT,
+                    'Request timeout',
+                    ['timeout' => $data['timer']]
+                );
+                if (isset($this->responseHandlers[$messageId])) {
+                    $this->responseHandlers[$messageId]($error);
+                }
+                $this->cleanupRequest($messageId);
+            }
+        }
+
+        if (!property_exists($message, 'method')) {
+            $this->handleResponse($message);
+        } elseif (property_exists($message, 'id')) {
+            $this->handleRequest($message);
+        } else {
+            $this->handleNotification($message);
+        }
+    }
+
+    private function handleResponse(JSONRPCResponse $response): void
+    {
+        if (!isset($this->responseHandlers[$response->id])) {
+            return;
+        }
+
+        $handler = $this->responseHandlers[$response->id];
+        unset($this->responseHandlers[$response->id]);
+        unset($this->progressHandlers[$response->id]);
+
+        $handler($response);
+    }
+
+//    private function handleRequest(JSONRPCRequest $request): void
+    private function handleRequest(JSONRPCMessage $request): void
+    {
+        $handler = $this->requestHandlers[$request->method] ?? null;
 
         if ($handler === null) {
+            // If no handler is registered for this method, respond with method not found error
+            $error = new JSONRPCError(
+                self::ERROR_METHOD_NOT_FOUND,
+                "Method not found",
+//                $request->method
+            );
+            $this->sendError($request->id, $error);
             return;
+        }
+
+        try {
+            $result = $handler($request);
+            $this->sendResult($request->id, $result);
+        } catch (\Throwable $e) {
+            $error = new JSONRPCError(
+                self::ERROR_INTERNAL,
+                $e->getMessage(),
+                ["trace" => $e->getTraceAsString()]
+            );
+            $this->sendError($request->id, $error);
+        }
+    }
+
+    private function handleNotification(JSONRPCNotification $notification): void
+    {
+        $handler = $this->notificationHandlers[$notification->method] ?? null;
+
+        if ($handler === null) {
+            return; // Notifications without handlers are silently ignored
         }
 
         try {
             $handler($notification);
-        } catch (Exception $e) {
-            $this->onError($e);
-        }
-    }
-
-    /**
-     * Handles incoming requests
-     */
-    protected function onRequest(JSONRPCRequest $request): void {
-
-        $handler = $this->requestHandlers[$request->method] ?? $this->fallbackRequestHandler;
-
-        if ($handler === null) {
-            try {
-                $this->transport?->send(new JSONRPCResponse(
-                    $request->id,
-                    null,
-                    new JSONRPCError(
-                        ErrorCode::METHOD_NOT_FOUND,
-                        "Server does not support {$request->method}"
-                    )
-                ));
-            } catch (Exception $e) {
-                $this->onError($e);
+        } catch (\Throwable $e) {
+            // Log error but don't send response as this is a notification
+            if ($this->options->enforceStrictCapabilities) {
+                throw $e;
             }
-            return;
-        }
-
-        try {
-            $result = $handler($request, new RequestHandlerExtra());
-
-            $this->transport?->send(new JSONRPCResponse($request->id, $result));
-        } catch (Exception $e) {
-
-            $this->transport?->send(new JSONRPCResponse(
-                $request->id,
-                null,
-                new JSONRPCError(
-                    ErrorCode::INTERNAL_ERROR,
-                    $e->getMessage() ?? "Internal error"
-                )
-            ));
         }
     }
 
-    /**
-     * Handles progress notifications
-     */
-    protected function onProgress(ProgressNotification $notification): void {
-        $handler = $this->progressHandlers[$notification->progressToken] ?? null;
-        if ($handler === null) {
-            $error = new Exception(
-                "Received progress notification for unknown token: " . json_encode($notification)
-            );
-            $this->onError($error);
-            return;
+    private function sendResult($id, $result): void
+    {
+        if (!$this->transport) {
+            throw new \RuntimeException('No transport set');
         }
 
-        $handler(new Progress($notification->progress, $notification->total));
+        $response = new JSONRPCResponse();
+        $response->id = $id;
+        $response->result = $result;
+
+        $this->transport->send($response);
+    }
+
+    private function sendError($id, JSONRPCError $error): void
+    {
+        if (!$this->transport) {
+            throw new \RuntimeException('No transport set');
+        }
+
+        $response = new JSONRPCMessage(id: $id, result: new Result());
+
+        $this->transport->send($response);
     }
 
     /**
-     * Handles responses to requests
+     * Sends a request and waits for a response.
      */
-    protected function onResponse(?JSONRPCResponse $response, ?JSONRPCError $error): void {
-        $messageId = $response?->id;
-        $handler = $this->responseHandlers[$messageId] ?? null;
-
-        if ($handler === null) {
-            $this->onError(new Exception(
-                "Received response for unknown message ID: " . json_encode($response)
-            ));
-            return;
+    protected function request(string $method, mixed $params = null, ?RequestOptions $options = null): PromiseInterface
+    {
+        if (!$this->transport) {
+            throw new \RuntimeException('Not connected');
         }
 
-        unset($this->responseHandlers[$messageId]);
-        unset($this->progressHandlers[$messageId]);
-
-        if ($response !== null) {
-            $handler($response, null);
-        } else {
-            if ($error === null) {
-                throw new RuntimeException("Both response and error cannot be null");
-            }
-            $mcpError = new McpError(
-                $error->code,
-                $error->message,
-                $error->data
-            );
-            $handler(null, $mcpError);
-        }
-    }
-
-    /**
-     * Sends a request and waits for response
-     */
-    public function request(Request $request, ?RequestOptions $options = null): RequestResult {
-
-        if ($this->transport === null) {
-            throw new RuntimeException("Not connected");
+        if ($this->options->enforceStrictCapabilities) {
+            $this->assertCapabilityForMethod($method);
         }
 
-        if ($this->options?->enforceStrictCapabilities) {
-            $this->assertCapabilityForMethod($request->method);
-        }
+        $messageId = $this->requestMessageId++;
+        $request = new JSONRPCRequest();
+        $request->jsonrpc = '2.0';
+        $request->method = $method;
+        $request->params = $params;
+        $request->id = $messageId;
 
-        $message = $request->toJSON();
-        $messageId = $message->id;
-
-        if ($options?->onProgress !== null) {
+        if (isset($options) && isset($options->onProgress)) {
             $this->progressHandlers[$messageId] = $options->onProgress;
+            $request->params = array_merge(
+                (array)$params,
+                ['_meta' => ['progressToken' => $messageId]]
+            );
         }
 
-        $promise = new Promise();
+        return new \React\Promise\Promise(function ($resolve, $reject) use ($messageId, $request, $options) {
+            $timeout = $options?->timeout ?? ProtocolOptions::DEFAULT_REQUEST_TIMEOUT;
 
-        $this->responseHandlers[$messageId] = function($response, $error) use ($promise) {
-            if ($error !== null) {
-                $promise->reject($error);
-                return;
+            // Set up timeout
+            $timer = null;
+            if ($timeout > 0) {
+                $timer = time() + ($timeout / 1000); // Convert to seconds
+                $this->requestHandlerAbortControllers[$messageId] = [
+                    'timer' => $timer,
+                    'controller' => null
+                ];
             }
 
-            if ($response?->error !== null) {
-                $promise->reject(new RuntimeException($response->error->toString()));
-                return;
-            }
+            $this->responseHandlers[$messageId] = function ($response) use ($resolve, $reject, $messageId, $timer) {
+                // Clear timeout
+                if ($timer !== null) {
+                    unset($this->requestHandlerAbortControllers[$messageId]);
+                }
+
+                if ($response instanceof \Throwable) {
+                    $reject($response);
+                    return;
+                }
+
+                try {
+                    $resolve($response->result);
+                } catch (\Throwable $e) {
+                    $reject($e);
+                }
+            };
 
             try {
-                $promise->resolve($response->result);
-            } catch (Exception $e) {
-                $promise->reject($e);
+                $this->transport->send($request);
+            } catch (\Throwable $e) {
+                $this->cleanupRequest($messageId);
+                $reject($e);
             }
-        };
-
-        $timeout = $options?->timeout ?? ProtocolOptions::DEFAULT_REQUEST_TIMEOUT;
-
-        try {
-            $this->transport->send($message);
-            return $promise->wait($timeout);
-        } catch (Exception $e) {
-            // Send cancellation notification
-            $notification = new CancelledNotification(
-                $messageId,
-                $e->getMessage() ?? "Unknown"
-            );
-
-            $this->transport->send($notification->toJSON());
-
-            unset($this->responseHandlers[$messageId]);
-            unset($this->progressHandlers[$messageId]);
-
-            throw $e;
-        }
+        });
     }
 
     /**
-     * Sends a notification
+     * Sends a notification (one-way message that does not expect a response).
      */
-    public function notification(Notification $notification): void {
-        if ($this->transport === null) {
-            throw new RuntimeException("Not connected");
+    protected function notify(string $method, mixed $params = null): void
+    {
+        if (!$this->transport) {
+            throw new \RuntimeException('Not connected');
         }
 
-        $this->assertNotificationCapability($notification->method);
+        $this->assertNotificationCapability($method);
 
-        $message = new JSONRPCNotification(
-            $notification->method,
-            json_decode(json_encode($notification), true)
-        );
+        $notification = new JSONRPCNotification();
+        $notification->jsonrpc = '2.0';
+        $notification->method = $method;
+        $notification->params = $params;
 
-        $this->transport->send($message);
+        $this->transport->send($notification);
     }
 
     /**
-     * Sets a request handler for a specific method
+     * Asserts that the remote side supports the given method.
      */
-    public function setRequestHandler(string $method, callable $handler): void {
-        $this->assertRequestHandlerCapability($method);
+    abstract protected function assertCapabilityForMethod(string $method): void;
+
+    /**
+     * Asserts that the local side supports handling the given notification.
+     */
+    abstract protected function assertNotificationCapability(string $method): void;
+
+    /**
+     * Asserts that the local side supports handling the given request.
+     */
+    abstract protected function assertRequestHandlerCapability(string $method): void;
+
+    /**
+     * Handles transport errors.
+     */
+    protected function handleError(\Throwable $error): void
+    {
+        // Notify all pending requests about the error
+        foreach ($this->responseHandlers as $handler) {
+            $handler($error);
+        }
+        $this->responseHandlers = [];
+        $this->progressHandlers = [];
+    }
+
+    /**
+     * Handles transport close.
+     */
+    protected function handleClose(): void
+    {
+        $error = new \RuntimeException('Connection closed');
+        $this->handleError($error);
+        $this->transport = null;
+    }
+
+//    /**
+//     * Sends a request to the remote end and waits for a response.
+//     */
+//    protected function request(string $method, $params = null, ?RequestOptions $options = null)
+//    {
+//        // Implementation will follow
+//    }
+
+//    /**
+//     * Sends a notification to the remote end.
+//     */
+//    protected function notify(string $method, $params = null): void
+//    {
+//        // Implementation will follow
+//    }
+
+    /**
+     * Registers a handler for incoming requests.
+     */
+    protected function onRequest(string $method, callable $handler): void
+    {
         $this->requestHandlers[$method] = $handler;
     }
 
     /**
-     * Removes a request handler
+     * Registers a handler for incoming notifications.
      */
-    public function removeRequestHandler(string $method): void {
-        unset($this->requestHandlers[$method]);
-    }
-
-    /**
-     * Sets a notification handler for a specific method
-     */
-    public function setNotificationHandler(string $method, callable $handler): void {
+    protected function onNotification(string $method, callable $handler): void
+    {
         $this->notificationHandlers[$method] = $handler;
     }
-
-    /**
-     * Removes a notification handler
-     */
-    public function removeNotificationHandler(string $method): void {
-        unset($this->notificationHandlers[$method]);
-    }
-
-    /**
-     * Closes the connection
-     */
-    public function close(): void {
-        $this->transport?->close();
-    }
-
-    /**
-     * Called when connection is closed
-     */
-    public function onClose(): void {}
-
-    /**
-     * Called when an error occurs
-     */
-    public function onError(Exception $error): void {}
-
-    /**
-     * Abstract methods that must be implemented by subclasses
-     */
-    abstract protected function assertCapabilityForMethod(string $method): void;
-    abstract protected function assertNotificationCapability(string $method): void;
-    abstract public function assertRequestHandlerCapability(string $method): void;
 }

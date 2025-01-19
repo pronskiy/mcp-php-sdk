@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace ModelContextProtocol\Types;
 
-class JSONRPCError
+class JSONRPCError implements JSONRPCMessageInterface
 {
     /**
      * Schema used to validate input for creating instances of this class
@@ -53,7 +53,7 @@ class JSONRPCError
     /**
      * @var JSONRPCErrorError
      */
-    private JSONRPCErrorError $error;
+    private int $error;
 
     /**
      * @var mixed
@@ -70,7 +70,7 @@ class JSONRPCError
      * @param mixed $id
      * @param string $jsonrpc
      */
-    public function __construct(JSONRPCErrorError $error, mixed $id, string $jsonrpc)
+    public function __construct(int $error, mixed $id, string $jsonrpc = self::JSONRPC_VERSION)
     {
         $this->error = $error;
         $this->id = $id;

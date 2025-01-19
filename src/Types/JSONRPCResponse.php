@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace ModelContextProtocol\Types;
 
-class JSONRPCResponse
+class JSONRPCResponse implements JSONRPCMessageInterface
 {
     /**
      * Schema used to validate input for creating instances of this class
@@ -53,7 +53,7 @@ class JSONRPCResponse
      * @param string $jsonrpc
      * @param mixed $result
      */
-    public function __construct(mixed $id, string $jsonrpc, mixed $result)
+    public function __construct(mixed $id, mixed $result, string $jsonrpc = self::JSONRPC_VERSION)
     {
         $this->id = $id;
         $this->jsonrpc = $jsonrpc;

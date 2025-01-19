@@ -1,5 +1,26 @@
 {
   "require": {
-    "helmich/schema2class": "v3.3.7"
+    "helmich/schema2class": "v3.3.7",
+    "wol-soft/php-json-schema-model-generator": "0.25.1",
+    "square/pjson": "v0.5.0",
+    "symfony/process": "v7.2.0",
+    "react/stream": "v1.4.0",
+    "react/http": "^1.9",
+    "ratchet/pawl": "^0.4.1",
+    "react/promise": "^2.9",
+    "react/event-loop": "^1.4"
+  },
+  "require-dev": {
+    "pestphp/pest": "v3.7.1"
+  },
+  "config": {
+    "allow-plugins": {
+      "pestphp/*": true
+    }
+  },
+  "autoload": {
+    "psr-4": {
+      "ModelContextProtocol\\": "src"
+    }
   }
 }

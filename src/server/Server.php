@@ -2,267 +2,252 @@
 
 namespace ModelContextProtocol\Server;
 
-//require_once __DIR__ . "/../types/types.php";
+const LATEST_PROTOCOL_VERSION = "2024-11-05";
+const SUPPORTED_PROTOCOL_VERSIONS = [
+    LATEST_PROTOCOL_VERSION,
+    "2024-10-07",
+];
+const JSONRPC_VERSION = "2.0";
 
 use ModelContextProtocol\Shared\Protocol;
-use ModelContextProtocol\Shared\ProtocolOptions;
 use ModelContextProtocol\Shared\RequestOptions;
 use ModelContextProtocol\Types\ClientCapabilities;
 use ModelContextProtocol\Types\Implementation;
 use ModelContextProtocol\Types\ServerCapabilities;
-use Psr\Log\LoggerInterface;
-use Psr\Log\NullLogger;
+use ModelContextProtocol\Types\InitializeRequest;
+use ModelContextProtocol\Types\InitializeResult;
+use ModelContextProtocol\Types\InitializedNotification;
+use ModelContextProtocol\Types\CreateMessageRequest;
+use ModelContextProtocol\Types\ListRootsRequest;
+use ModelContextProtocol\Types\LoggingMessageNotification;
+use ModelContextProtocol\Types\ResourceUpdatedNotification;
+use React\Promise\PromiseInterface;
 
-/**
- * An MCP server on top of a pluggable transport.
- */
 class Server extends Protocol
 {
-    private Implementation $serverInfo;
-    public Closure $onCloseCallback;
-    private ServerCapabilities $capabilities;
-    private array $tools = [];
-    private array $prompts = [];
-    private array $resources = [];
     private ?ClientCapabilities $clientCapabilities = null;
     private ?Implementation $clientVersion = null;
-    public ?Closure $onInitialized = null;
-    private ?string $instructions;
+    private ServerCapabilities $capabilities;
+    private ?string $instructions = '';
+    private Implementation $serverInfo;
 
-    public function __construct(
-        ServerOptions $options,
-        Implementation $serverInfo,
-//        ?callable $onCloseCallback = null,
-    ) {
+    /**
+     * Callback for when initialization has fully completed.
+     */
+    public $oninitialized;
+
+    public function __construct(Implementation $serverInfo, ServerOptions $options)
+    {
         parent::__construct($options);
         $this->serverInfo = $serverInfo;
-//        $this->onCloseCallback = $onCloseCallback;
         $this->capabilities = $options->capabilities;
         $this->instructions = $options->instructions;
 
-        $this->initializeHandlers();
-    }
-
-    private function initializeHandlers(): void
-    {
-        // Core protocol handlers
-        $this->setRequestHandler(Method::DEFINED_INITIALIZE, function ($request) {
-            return $this->handleInitialize($request);
-        });
-
-        $this->setNotificationHandler(Method::DEFINED_NOTIFICATIONS_INITIALIZED, function () {
-            if ($this->onInitialized) {
-                call_user_func($this->onInitialized);
+        $this->setRequestHandler('initialize', [$this, 'onInitialize']);
+        $this->setNotificationHandler('initialized', function() {
+            if ($this->oninitialized) {
+                call_user_func($this->oninitialized);
             }
         });
-
-        if ($this->capabilities->tools !== null) {
-            $this->setRequestHandler(Method::DEFINED_TOOLS_LIST, function () {
-                return $this->handleListTools();
-            });
-            $this->setRequestHandler(Method::DEFINED_TOOLS_CALL, function ($request) {
-                return $this->handleCallTool($request);
-            });
-        }
-
-        if ($this->capabilities->prompts !== null) {
-            $this->setRequestHandler(Method::DEFINED_PROMPTS_LIST, function () {
-                return $this->handleListPrompts();
-            });
-            $this->setRequestHandler(Method::DEFINED_PROMPTS_GET, function ($request) {
-                return $this->handleGetPrompt($request);
-            });
-        }
-
-        if ($this->capabilities->resources !== null) {
-            $this->setRequestHandler(Method::DEFINED_RESOURCES_LIST, function () {
-                return $this->handleListResources();
-            });
-            $this->setRequestHandler(Method::DEFINED_RESOURCES_READ, function ($request) {
-                return $this->handleReadResource($request);
-            });
-            $this->setRequestHandler(Method::DEFINED_RESOURCES_TEMPLATES_LIST, function () {
-                return $this->handleListResourceTemplates();
-            });
-        }
     }
 
-    public function onClose(): void
+    public function setRequestHandler()
     {
-        if ($this->onCloseCallback) {
-            call_user_func($this->onCloseCallback);
-        }
+        
     }
 
-    public function addTool(string $name, string $description, array $inputSchema, callable $handler): void
+    public function setNotificationHandler()
     {
-        if ($this->capabilities->tools === null) {
-            throw new \RuntimeException("Server does not support tools capability");
-        }
-
-        $this->tools[$name] = new RegisteredTool($name, $description, $inputSchema, $handler);
-    }
-
-    public function addPrompt(
-        string $name,
-        ?string $description,
-        ?array $arguments,
-        callable $promptProvider
-    ): void {
-        if ($this->capabilities->prompts === null) {
-            throw new \RuntimeException("Server does not support prompts capability");
-        }
-
-        $this->prompts[$name] = new RegisteredPrompt($name, $description, $arguments, $promptProvider);
-    }
-
-    public function addResource(
-        string $uri,
-        string $name,
-        string $description,
-        string $mimeType,
-        callable $readHandler
-    ): void {
-        if ($this->capabilities->resources === null) {
-            throw new \RuntimeException("Server does not support resources capability.");
-        }
-
-        $this->resources[$uri] = new RegisteredResource($uri, $name, $description, $mimeType, $readHandler);
-    }
-
-    private function handleInitialize($request)
-    {
-        $this->clientCapabilities = $request['capabilities'] ?? null;
-        $this->clientVersion = $request['clientInfo'] ?? null;
-
-        $requestedVersion = $request['protocolVersion'] ?? null;
-        $protocolVersion = in_array($requestedVersion, Protocol::SUPPORTED_VERSIONS)
-            ? $requestedVersion
-            : Protocol::LATEST_VERSION;
-
-        return [
-            'protocolVersion' => $protocolVersion,
-            'capabilities' => $this->capabilities,
-            'serverInfo' => $this->serverInfo,
-        ];
-    }
-
-    private function handleListTools()
-    {
-        return new ListToolsResult($this->tools);
-    }
-
-    private function handleCallTool($request)
-    {
-        $toolName = $request['name'] ?? null;
-
-        if (!isset($this->tools[$toolName])) {
-            throw new \InvalidArgumentException("Tool not found: {$toolName}");
-        }
-
-        $tool = $this->tools[$toolName];
-        return call_user_func($tool->handler, $request);
-    }
-
-    private function handleListResources()
-    {
-        return new ListResourcesResult($this->resources);
-    }
-
-    private function handleReadResource($request)
-    {
-        $uri = $request['uri'] ?? null;
-
-        if (!isset($this->resources[$uri])) {
-            throw new \InvalidArgumentException("Resource not found: {$uri}");
-        }
-
-        $resource = $this->resources[$uri];
-        return call_user_func($resource->readHandler, $request);
-    }
-
-    private function handleListPrompts()
-    {
-        return new ListPromptsResult($this->prompts);
-    }
-
-    private function handleGetPrompt($request)
-    {
-        $promptName = $request['name'] ?? null;
-
-        if (!isset($this->prompts[$promptName])) {
-            throw new \InvalidArgumentException("Prompt not found: {$promptName}");
-        }
-
-        $prompt = $this->prompts[$promptName];
-        return call_user_func($prompt->messageProvider, $request);
+        
     }
 
     protected function assertCapabilityForMethod(string $method): void
     {
-        // TODO: Implement assertCapabilityForMethod() method.
+        switch ($method) {
+            case 'sampling/createMessage':
+                if (!$this->clientCapabilities?->sampling) {
+                    throw new \Exception("Client does not support sampling (required for {$method})");
+                }
+                break;
+
+            case 'roots/list':
+                if (!$this->clientCapabilities?->roots) {
+                    throw new \Exception("Client does not support listing roots (required for {$method})");
+                }
+                break;
+
+            case 'ping':
+                // No specific capability required for ping
+                break;
+        }
     }
 
     protected function assertNotificationCapability(string $method): void
     {
-        // TODO: Implement assertNotificationCapability() method.
+        switch ($method) {
+            case 'notifications/message':
+                if (!$this->capabilities->logging) {
+                    throw new \Exception("Server does not support logging (required for {$method})");
+                }
+                break;
+
+            case 'notifications/resources/updated':
+            case 'notifications/resources/list_changed':
+                if (!$this->capabilities->resources) {
+                    throw new \Exception("Server does not support notifying about resources (required for {$method})");
+                }
+                break;
+
+            case 'notifications/tools/list_changed':
+                if (!$this->capabilities->tools) {
+                    throw new \Exception("Server does not support notifying of tool list changes (required for {$method})");
+                }
+                break;
+
+            case 'notifications/prompts/list_changed':
+                if (!$this->capabilities->prompts) {
+                    throw new \Exception("Server does not support notifying of prompt list changes (required for {$method})");
+                }
+                break;
+
+            case 'notifications/cancelled':
+            case 'notifications/progress':
+                // These notifications are always allowed
+                break;
+        }
     }
 
-    public function assertRequestHandlerCapability(string $method): void
+    protected function assertRequestHandlerCapability(string $method): void
     {
-        // TODO: Implement assertRequestHandlerCapability() method.
+        switch ($method) {
+            case 'sampling/createMessage':
+                if (!$this->capabilities->sampling) {
+                    throw new \Exception("Server does not support sampling (required for {$method})");
+                }
+                break;
+
+            case 'logging/setLevel':
+                if (!$this->capabilities->logging) {
+                    throw new \Exception("Server does not support logging (required for {$method})");
+                }
+                break;
+
+            case 'prompts/get':
+            case 'prompts/list':
+                if (!$this->capabilities->prompts) {
+                    throw new \Exception("Server does not support prompts (required for {$method})");
+                }
+                break;
+
+            case 'resources/list':
+            case 'resources/templates/list':
+            case 'resources/read':
+                if (!$this->capabilities->resources) {
+                    throw new \Exception("Server does not support resources (required for {$method})");
+                }
+                break;
+
+            case 'tools/call':
+            case 'tools/list':
+                if (!$this->capabilities->tools) {
+                    throw new \Exception("Server does not support tools (required for {$method})");
+                }
+                break;
+
+            case 'ping':
+            case 'initialize':
+                // No specific capability required for these methods
+                break;
+        }
     }
-}
 
-/**
- * Wrapper classes for tools, prompts, and resources
- */
-class RegisteredTool
-{
-    public string $name;
-    public string $description;
-    public array $inputSchema;
-    public $handler;
-
-    public function __construct(string $name, string $description, array $inputSchema, callable $handler)
+    private function onInitialize(InitializeRequest $request): InitializeResult
     {
-        $this->name = $name;
-        $this->description = $description;
-        $this->inputSchema = $inputSchema;
-        $this->handler = $handler;
+        $requestedVersion = $request->params->protocolVersion;
+
+        $this->clientCapabilities = $request->params->capabilities;
+        $this->clientVersion = $request->params->clientInfo;
+
+        return new InitializeResult([
+            'protocolVersion' => in_array($requestedVersion, SUPPORTED_PROTOCOL_VERSIONS) 
+                ? $requestedVersion 
+                : LATEST_PROTOCOL_VERSION,
+            'capabilities' => $this->getCapabilities(),
+            'serverInfo' => $this->serverInfo,
+            'instructions' => $this->instructions,
+        ]);
     }
-}
 
-class RegisteredPrompt
-{
-    public string $name;
-    public ?string $description;
-    public ?array $arguments;
-    public $messageProvider;
-
-    public function __construct(string $name, ?string $description, ?array $arguments, callable $messageProvider)
+    public function getClientCapabilities(): ?ClientCapabilities
     {
-        $this->name = $name;
-        $this->description = $description;
-        $this->arguments = $arguments;
-        $this->messageProvider = $messageProvider;
+        return $this->clientCapabilities;
     }
-}
 
-class RegisteredResource
-{
-    public string $uri;
-    public string $name;
-    public string $description;
-    public string $mimeType;
-    public $readHandler;
-
-    public function __construct(string $uri, string $name, string $description, string $mimeType, callable $readHandler)
+    public function getClientVersion(): ?Implementation
     {
-        $this->uri = $uri;
-        $this->name = $name;
-        $this->description = $description;
-        $this->mimeType = $mimeType;
-        $this->readHandler = $readHandler;
+        return $this->clientVersion;
+    }
+
+    private function getCapabilities(): ServerCapabilities
+    {
+        return $this->capabilities;
+    }
+
+    public function ping(): PromiseInterface
+    {
+        return $this->request(['method' => 'ping']);
+    }
+
+    public function createMessage(array $params, ?RequestOptions $options = null): PromiseInterface
+    {
+        return $this->request([
+            'method' => 'sampling/createMessage',
+            'params' => $params
+        ], $options);
+    }
+
+    public function listRoots(?array $params = null, ?RequestOptions $options = null): PromiseInterface
+    {
+        return $this->request([
+            'method' => 'roots/list',
+            'params' => $params
+        ], $options);
+    }
+
+    public function sendLoggingMessage(array $params): void
+    {
+        $this->notification([
+            'method' => 'notifications/message',
+            'params' => $params
+        ]);
+    }
+
+    public function sendResourceUpdated(array $params): void
+    {
+        $this->notification([
+            'method' => 'notifications/resources/updated',
+            'params' => $params
+        ]);
+    }
+
+    public function sendResourceListChanged(): void
+    {
+        $this->notification([
+            'method' => 'notifications/resources/list_changed'
+        ]);
+    }
+
+    public function sendToolListChanged(): void
+    {
+        $this->notification([
+            'method' => 'notifications/tools/list_changed'
+        ]);
+    }
+
+    public function sendPromptListChanged(): void
+    {
+        $this->notification([
+            'method' => 'notifications/prompts/list_changed'
+        ]);
     }
 }

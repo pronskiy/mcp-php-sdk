@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace ModelContextProtocol\Types;
 
-class JSONRPCRequest
+class JSONRPCRequest extends JSONRPCMessage
 {
     /**
      * Schema used to validate input for creating instances of this class

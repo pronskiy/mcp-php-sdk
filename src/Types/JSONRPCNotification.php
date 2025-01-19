@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace ModelContextProtocol\Types;
 
-class JSONRPCNotification
+class JSONRPCNotification implements JSONRPCMessageInterface
 {
     /**
      * Schema used to validate input for creating instances of this class

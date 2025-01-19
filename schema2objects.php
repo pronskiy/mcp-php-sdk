@@ -2,6 +2,9 @@
 
 require_once __DIR__ . '/vendor/autoload.php';
 
+use PHPModelGenerator\ModelGenerator;
+use PHPModelGenerator\SchemaProvider\RecursiveDirectoryProvider;
+
 $schemaPath = __DIR__ . '/schema/';
 $schemaData = json_decode(file_get_contents($schemaPath . 'schema.json'));
 
@@ -26,3 +29,6 @@ foreach ($schemaData->definitions as $name => $definition) {
 }
 
 file_put_contents(__DIR__ . '/.s2c.yaml', $s2c_config);
+
+//(new ModelGenerator())
+//    ->generateModels(new RecursiveDirectoryProvider(__DIR__ . '/schema/generated'), __DIR__ . '/output');
